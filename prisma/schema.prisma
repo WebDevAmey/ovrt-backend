@@ -1,0 +1,1089 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../lib/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                        String                     @id @default(cuid())
+  name                      String
+  email                     String                     @unique
+  password                  String?
+  emailVerified             Boolean                    @default(false)
+  role                      OrgRole                    @default(USER)
+  allowedAccess             String[]                   @default([])
+  restrictedAccess          String[]                   @default([])
+  inputTokens               Int                        @default(0)
+  outputTokens              Int                        @default(0)
+  memory                    String[]                   @default([])
+  rateWindowStartedAt       DateTime?
+  rateWindowTokens          Int                        @default(0)
+  rateWindowMessages        Int                        @default(0)
+  tokenLimitPerWindow       Int                        @default(200000)
+  messageLimitPerWindow     Int                        @default(50)
+  windowDurationMs          Int                        @default(18000000)
+  verificationOTP           String?
+  verificationOTPExpires    DateTime?
+  resetPasswordExpires      DateTime?
+  resetPasswordToken        String?
+  organisationId            String
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  googleId                  String?                    @unique
+  phoneNumber               String?
+  aiTokenUsage              AiTokenUsage[]
+  ContentGenerationTree     ContentGenerationTree[]
+  conversations             Conversation[]
+  feedbacks                 Feedback[]
+  jobs                      Job[]
+  sentInvites               OrgInvite[]                @relation("SentInvites")
+  createdSupportConnections SupportChannelConnection[]
+  organisation              Organisation               @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  files                     UserFiles[]
+}
+
+model OrgInvite {
+  id             String       @id @default(cuid())
+  email          String
+  token          String       @unique
+  role           OrgRole      @default(USER)
+  organisationId String
+  invitedById    String
+  status         InviteStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  invitedBy      User         @relation("SentInvites", fields: [invitedById], references: [id], onDelete: Cascade)
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([token])
+}
+
+model Organisation {
+  id                        String                     @id @default(cuid())
+  name                      String
+  onboardingComplete        Boolean                    @default(false)
+  businessContext           Json                       @default("{}")
+  inputTokens               Int                        @default(0)
+  outputTokens              Int                        @default(0)
+  rateWindowStartedAt       DateTime?
+  rateWindowTokens          Int                        @default(0)
+  rateWindowMessages        Int                        @default(0)
+  tokenLimitPerWindow       Int                        @default(2000000)
+  messageLimitPerWindow     Int                        @default(500)
+  windowDurationMs          Int                        @default(18000000)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  orgSetupComplete          Boolean                    @default(false)
+  orgIdentity               Json                       @default("{}")
+  aiTokenUsage              AiTokenUsage[]
+  analystJobs               AnalystJob[]
+  BrandDesignSystem         BrandDesignSystem[]
+  ContentGenerationTree     ContentGenerationTree[]
+  conversations             Conversation[]
+  customerInsights          CustomerInsight[]
+  opportunities             Opportunity[]
+  marketAnalyses            MarketAnalysis[]
+  files                     OrgFiles[]
+  invites                   OrgInvite[]
+  shopifyIntegrations       ShopifyIntegration[]
+  supportAgentConfig        SupportAgentConfig?
+  supportActionLogs         SupportActionLog[]
+  supportAgentJobs          SupportAgentJob[]
+  supportChannelConnections SupportChannelConnection[]
+  supportConversations      SupportConversation[]
+  users                     User[]
+  weeklyDigests             WeeklyDigest[]
+}
+
+model Playbook {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String
+  content     String
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  type        PlaybookType @default(CHAT)
+
+  @@index([isActive])
+}
+
+model Conversation {
+  id             String            @id @default(cuid())
+  name           String?
+  intent         Json              @default("{}")
+  state          ConversationState @default(ACTIVE)
+  phase          ConversationPhase @default(NOT_STARTED)
+  result         Json              @default("{}")
+  memory         String[]          @default([])
+  organisationId String
+  userId         String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organisation   Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs           Job[]
+  messages       Message[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([state])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  from           MessageRole
+  content        Json
+  attachments    Json
+  modelName      String?
+  agentStatus    Json         @default("[]")
+  conversationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  resourcesUsed  Json         @default("[]")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model Attachment {
+  id        String  @id @default(cuid())
+  filename  String
+  type      String
+  url       String
+  mediaType String?
+}
+
+model Job {
+  id             String       @id @default(cuid())
+  status         JobStatus    @default(QUEUED)
+  conversationId String
+  userId         String
+  threadId       String       @unique
+  result         Json?
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  agentRuns      AgentRun[]
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([conversationId])
+}
+
+model AgentRun {
+  id            String         @id @default(cuid())
+  jobId         String
+  parentId      String?
+  agentName     String
+  status        AgentRunStatus @default(RUNNING)
+  modelProvider String
+  modelName     String
+  inputTokens   Int
+  outputTokens  Int
+  costMicros    Int
+  latencyMs     Int
+  input         Json
+  output        Json?
+  error         String?
+  startedAt     DateTime       @default(now())
+  finishedAt    DateTime?
+  job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  parent        AgentRun?      @relation("AgentRunHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children      AgentRun[]     @relation("AgentRunHierarchy")
+
+  @@index([jobId])
+  @@index([parentId])
+}
+
+model UserFiles {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  aiDescription String?
+  url           String
+  mediaType     String
+  type          String
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OrgFiles {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  aiDescription  String?
+  url            String
+  mediaType      String
+  type           String
+  organisationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+}
+
+
+
+model SupportChannelConnection {
+  id                    String                @id @default(cuid())
+  organisationId        String
+  createdByUserId       String
+  channelType           SupportChannelType
+  /// Channel-native account identity: gmail address, WA phone-number id, IG business-account id.
+  externalAccountId     String
+  /// Human-readable label shown in the UI (the email address, page name, …).
+  displayName           String
+  accessTokenRef        String?
+  refreshTokenRef       String?
+  tokenExpiry           DateTime?
+  status                DatasourceStatus      @default(ACTIVE)
+  healthStatus          String                @default("unknown")
+  lastError             String?
+  lastHealthCheckAt     DateTime?
+  /// Whether inbound messages on this connection feed the support inbox.
+  trackInbound          Boolean               @default(false)
+  /// Incremental sync cursor (Gmail historyId; future channel equivalents).
+  syncCursor            String?
+  /// When the channel's push subscription lapses (Gmail watch expiration).
+  subscriptionExpiresAt DateTime?
+  /// Channel-specific state the core never queries: { watchTopic } for Gmail.
+  channelState          Json                  @default("{}")
+  /// Per-connection overrides of SupportAgentConfig: { signature?, mode?, persona? }.
+  agentOverrides        Json                  @default("{}")
+  metadata              Json                  @default("{}")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  createdUser           User                  @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  organisation          Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  conversations         SupportConversation[]
+
+  @@unique([organisationId, channelType, externalAccountId])
+  @@index([channelType, externalAccountId, status])
+  @@index([organisationId])
+}
+
+model SupportConversation {
+  id                     String                    @id @default(cuid())
+  organisationId         String
+  /// Denormalised from the connection so the inbox can filter/badge without a join.
+  channelType            SupportChannelType
+  channelConnectionId    String
+  /// Channel-native conversation key: gmailThreadId, WA chat id, IG thread id.
+  /// Unique PER CONNECTION, not globally.
+  externalConversationId String
+  subject                String                    @default("")
+  customerName           String?
+  /// Normalised reply handle: bare email, E.164 phone, IG username.
+  customerHandle         String                    @default("")
+  /// Raw channel-native From ("Jane" <jane@x.com>) for display/audit only.
+  customerRawHandle      String                    @default("")
+  status                 SupportConversationStatus @default(OPEN)
+  intent                 SupportIntent             @default(OTHER)
+  lowConfidence          Boolean                   @default(false)
+  lastInboundAt          DateTime?
+  lastOutboundAt         DateTime?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  agentJobs              SupportAgentJob?
+  connection             SupportChannelConnection  @relation(fields: [channelConnectionId], references: [id], onDelete: Cascade)
+  organisation           Organisation              @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  messages               SupportMessage[]
+
+  @@unique([channelConnectionId, externalConversationId])
+  @@index([organisationId, status])
+  @@index([organisationId, lastInboundAt(sort: Desc)])
+  @@index([organisationId, channelType])
+}
+
+model SupportMessage {
+  id                String                  @id @default(cuid())
+  conversationId    String
+  organisationId    String
+  direction         SupportMessageDirection
+  status            SupportMessageStatus    @default(RECEIVED)
+  /// Channel-native message id (gmail message id; WA wamid). Null for unsent drafts.
+  externalMessageId String?
+  fromHandle        String                  @default("")
+  toHandle          String                  @default("")
+  subject           String                  @default("")
+  snippet           String                  @default("")
+  body              String                  @default("")
+  sentAt            DateTime?
+  /// Channel transport metadata, owned by the adapter. Gmail:
+  /// { messageIdHeader, inReplyToHeader, references }.
+  channelMeta       Json                    @default("{}")
+  classScore        Float?
+  classReasons      String[]                @default([])
+  lowConfidence     Boolean?
+  intent            SupportIntent?
+  generatedByModel  String?
+  matchedRuleIds    String[]                @default([])
+  agentJobId        String?
+  sendAttempts      Int                     @default(0)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  conversation      SupportConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalMessageId])
+  @@index([organisationId, status])
+  @@index([conversationId, createdAt])
+  @@index([status, direction])
+}
+
+model SupportAgentConfig {
+  id                      String             @id @default(cuid())
+  organisationId          String             @unique
+  mode                    SupportAgentMode   @default(OFF)
+  persona                 String?
+  /// Org-default signature (email channels). Per-connection override in
+  /// SupportChannelConnection.agentOverrides.signature.
+  signature               String?
+  systemInstructions      String?
+  fallbackBehavior        String             @default("draft")
+  escalateOnLowConfidence Boolean            @default(true)
+  escalateOnComplex       Boolean            @default(true)
+  /// Per-action write permissions + guardrails the merchant toggles. Parsed by
+  /// src/support/actions/permissions.ts into a typed ActionPolicy (deny-by-default).
+  actionPermissions       Json               @default("{}")
+  /// Store return window in days, used for return-eligibility. Null ⇒ defer to policy text.
+  returnWindowDays        Int?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  organisation            Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  rules                   SupportAgentRule[]
+
+  @@index([organisationId])
+}
+
+model SupportAgentRule {
+  id               String             @id @default(cuid())
+  agentConfigId    String
+  organisationId   String
+  name             String
+  priority         Int                @default(0)
+  matchType        SupportRuleMatch   @default(KEYWORD)
+  matchValue       String[]           @default([])
+  actionType       SupportRuleAction  @default(DIRECTIVE)
+  responseTemplate String?
+  directive        String?
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  agentConfig      SupportAgentConfig @relation(fields: [agentConfigId], references: [id], onDelete: Cascade)
+
+  @@index([agentConfigId])
+  @@index([organisationId])
+}
+
+model SupportAgentJob {
+  id                  String                @id @default(cuid())
+  organisationId      String
+  conversationId      String                @unique(map: "SupportAgentJob_active_unique", where: raw("(status = ANY (ARRAY['QUEUED'::\"SupportAgentJobStatus\", 'RUNNING'::\"SupportAgentJobStatus\"]))"))
+  triggeringMessageId String?
+  status              SupportAgentJobStatus @default(QUEUED)
+  error               String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  conversation        SupportConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  organisation        Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([organisationId])
+}
+
+/// Actionable customer-support signal extracted inline by the support agent
+/// (a quality complaint, wrong/damaged item, recurring question, feature/stock
+/// request, shipping pain, or praise). Capture-only for now — a later pass
+/// consumes these for store improvement.
+model CustomerInsight {
+  id             String                @id @default(cuid())
+  organisationId String
+  conversationId String
+  messageId      String?
+  type           InsightType
+  sentiment      InsightSentiment
+  category       String?
+  summary        String
+  /// VERBATIM customer text. Attacker-controlled — the LATER consumer pass MUST
+  /// fence this before putting it in any prompt.
+  snippet        String
+  productHint    String?
+  status         CustomerInsightStatus @default(NEW)
+  createdAt      DateTime              @default(now())
+  organisation   Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, type, createdAt(sort: Desc)])
+  @@index([organisationId, status])
+  @@index([conversationId])
+}
+
+/// Audit + idempotency log for write-actions the support agent took on Shopify
+/// (cancel, address edit, reorder, return, refund). `actionType`/`status` are
+/// plain strings (no enum) so the table stays additive. An `executed` row for a
+/// given conversation+order+actionType makes the executor a no-op on retry.
+model SupportActionLog {
+  id             String       @id @default(cuid())
+  organisationId String
+  conversationId String
+  /// Shopify order GID or order name the action targeted (null for store-wide actions).
+  orderRef       String?
+  /// cancelOrder | editAddress | reorder | initiateReturn | refund
+  actionType     String
+  /// executed | failed | not_permitted
+  status         String
+  detail         Json         @default("{}")
+  createdAt      DateTime     @default(now())
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([organisationId, orderRef, actionType])
+}
+
+
+
+model ShopifyIntegration {
+  id                 String            @id @default(cuid())
+  organisationId     String
+  createdByUserId    String
+  shopDomain         String
+  accessToken        String
+  scope              String
+  name               String
+  shopId             BigInt?
+  shopName           String?
+  shopOwner          String?
+  shopEmail          String?
+  country            String?
+  currency           String?
+  planName           String?
+  primaryDomain      String?
+  timezone           String?
+  myshopifyDomain    String?
+  status             DatasourceStatus  @default(ACTIVE)
+  healthStatus       String            @default("healthy")
+  lastError          String?
+  lastHealthCheckAt  DateTime?
+  metadata           Json              @default("{}")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  labourRestockCost  Float?
+  processingFeeRate  Float?
+  returnShippingCost Float?
+  revenueLossRules   RevenueLossRule[]
+  organisation       Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, shopDomain])
+  @@index([organisationId])
+}
+
+model RevenueLossRule {
+  id                           String             @id @default(cuid())
+  integrationId                String
+  currency                     String?
+  effectiveFrom                DateTime           @default(now())
+  effectiveTo                  DateTime?
+  gatewayFeeRate               Float              @default(0)
+  gatewayFixedFee              Float              @default(0)
+  gatewayFeeTaxRate            Float              @default(0)
+  gatewayFeeRefunded           Boolean            @default(false)
+  outboundShippingBorneByStore Boolean            @default(true)
+  returnShippingCost           Float              @default(0)
+  restockLabourPerItem         Float              @default(0)
+  handlingFeePerRefund         Float              @default(0)
+  writeOffRate                 Float              @default(0)
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
+  integration                  ShopifyIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([integrationId, currency, effectiveFrom])
+}
+
+model Feedback {
+  id         String       @id @default(cuid())
+  type       FeedbackType
+  userId     String
+  messageId  String?
+  url        String?
+  content    String?
+  deviceInfo Json         @default("{}")
+  createdAt  DateTime     @default(now())
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([messageId])
+}
+
+model AnalystJob {
+  id             String           @id @default(cuid())
+  organisationId String
+  insightType    String
+  sourceType     String
+  sourceId       String
+  status         AnalystJobStatus @default(QUEUED)
+  factData       Json?
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organisation   Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  anomalies      InsightAnomaly[]
+
+  @@unique([organisationId, insightType], map: "AnalystJob_active_unique", where: raw("(status = ANY (ARRAY['QUEUED'::\"AnalystJobStatus\", 'RUNNING'::\"AnalystJobStatus\"]))"))
+  @@index([organisationId, insightType, createdAt(sort: Desc)])
+}
+
+model InsightAnomaly {
+  id              String           @id @default(cuid())
+  jobId           String
+  anomalyDetails  Json
+  detectedAt      DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  promptContext   String?
+  job             AnalystJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  opportunities   Opportunity[]
+
+  @@index([jobId])
+}
+
+model Opportunity {
+  id               String              @id @default(cuid())
+  organisationId   String
+  title            String
+  description      String
+  category         OpportunityCategory @default(OTHER)
+  priority         Int                 @default(50)
+  source           OpportunitySource
+  status           OpportunityStatus   @default(OPEN)
+  evidence         Json                @default("[]")
+  dedupeKey        String?
+  sourceAnomalyId  String?
+  sourceRef        String?
+  conversationId   String?
+  generatedByModel String?
+  viewedAt         DateTime?
+  dismissedAt      DateTime?
+  doneAt           DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  organisation     Organisation        @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  sourceAnomaly    InsightAnomaly?     @relation(fields: [sourceAnomalyId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, status, priority(sort: Desc)])
+  @@index([organisationId, status, createdAt(sort: Desc)])
+  @@index([organisationId, dedupeKey, status])
+  @@index([sourceAnomalyId])
+}
+
+model MarketAnalysis {
+  id             String               @id @default(cuid())
+  organisationId String
+  status         MarketAnalysisStatus @default(QUEUED)
+  queryContext   Json                 @default("{}")
+  marketOverview Json?
+  competitors    Json?
+  marketTrends   Json?
+  targetAudience Json?
+  sources        Json                 @default("[]")
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organisation   Organisation         @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([organisationId, status])
+}
+
+model WeeklyDigest {
+  id               String             @id @default(cuid())
+  organisationId   String
+  weekStart        DateTime
+  weekEnd          DateTime
+  status           WeeklyDigestStatus @default(QUEUED)
+  summary          Json?
+  generatedByModel String?
+  error            String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  organisation     Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, weekStart])
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([organisationId, status])
+}
+
+model AiTokenUsage {
+  id                  String            @id @default(cuid())
+  organisationId      String
+  userId              String?
+  conversationId      String?
+  messageId           String?
+  jobId               String?
+  agentRunId          String?
+  provider            AiServiceProvider
+  serviceName         String
+  modelName           String
+  modelVersion        String?
+  callKind            AiCallKind        @default(CHAT_COMPLETION)
+  endpoint            String?
+  feature             String?
+  agentName           String?
+  operation           String?
+  inputTokens         Int               @default(0)
+  outputTokens        Int               @default(0)
+  cachedInputTokens   Int               @default(0)
+  cacheCreationTokens Int               @default(0)
+  reasoningTokens     Int               @default(0)
+  totalTokens         Int               @default(0)
+  costMicros          BigInt?
+  currency            String?
+  pricingRef          String?
+  status              AiCallStatus      @default(SUCCEEDED)
+  latencyMs           Int?
+  ttftMs              Int?
+  finishReason        String?
+  toolCallCount       Int               @default(0)
+  retryCount          Int               @default(0)
+  errorCode           String?
+  errorMessage        String?
+  requestId           String?
+  traceId             String?
+  metadata            Json              @default("{}")
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime          @default(now())
+  organisation        Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  user                User?             @relation(fields: [userId], references: [id])
+
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([organisationId, provider, modelName, createdAt(sort: Desc)])
+  @@index([organisationId, feature, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([jobId])
+  @@index([status])
+}
+
+model Admin {
+  id           String    @id
+  email        String    @unique
+  name         String
+  role         AdminRole
+  hashPassword String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+}
+
+model BrandDesignSystem {
+  id                String       @id
+  organisationId    String
+  name              String
+  description       String?
+  primaryColor      String
+  secondaryColor    String
+  accentColor       String?
+  backgroundColor   String
+  textColor         String
+  headingFont       String
+  bodyFont          String
+  logoUrl           String?
+  borderRadius      String       @default("medium")
+  colorPalette      String       @default("custom")
+  visualStyle       String       @default("modern")
+  imageStyle        String       @default("photography")
+  toneOfVoice       String       @default("professional")
+  agentInstructions String?
+  extraColors       Json         @default("[]")
+  extraFonts        Json         @default("[]")
+  isDefault         Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime
+  bodySize          String       @default("16")
+  brandKeywords     String[]     @default([])
+  headingWeight     String       @default("700")
+  industry          String?
+  monoFont          String?
+  mutedColor        String?
+  shadowStyle       String       @default("soft")
+  spacing           String       @default("comfortable")
+  websiteUrl        String?
+  Organisation      Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, name])
+  @@index([organisationId])
+}
+
+model ContentGenerationNode {
+  id                          String                  @id
+  treeId                      String
+  parentNodeId                String?
+  prompt                      String
+  extraInstructions           String?
+  htmlContent                 String?
+  status                      ContentNodeStatus       @default(PENDING)
+  error                       String?
+  positionX                   Float                   @default(0)
+  positionY                   Float                   @default(0)
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime
+  ContentGenerationNode       ContentGenerationNode?  @relation("ContentGenerationNodeToContentGenerationNode", fields: [parentNodeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_ContentGenerationNode ContentGenerationNode[] @relation("ContentGenerationNodeToContentGenerationNode")
+  ContentGenerationTree       ContentGenerationTree   @relation(fields: [treeId], references: [id], onDelete: Cascade)
+
+  @@index([parentNodeId])
+  @@index([treeId, createdAt])
+}
+
+model ContentGenerationTree {
+  id                    String                  @id
+  organisationId        String
+  createdByUserId       String
+  name                  String?
+  prompt                String
+  brandDesignSystemId   String?
+  ratio                 String                  @default("1:1")
+  count                 Int                     @default(4)
+  platform              String?
+  extraInstructions     String?
+  jobId                 String?                 @unique
+  status                ContentTreeStatus       @default(PENDING)
+  error                 String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime
+  ContentGenerationNode ContentGenerationNode[]
+  User                  User                    @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  Organisation          Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@index([organisationId, status])
+}
+
+model SupportInboundJob {
+  id           String           @id @default(uuid())
+  emailAddress String
+  historyId    String
+  status       SupportJobStatus @default(PENDING)
+  attempts     Int              @default(0)
+  maxAttempts  Int              @default(3)
+  error        String?
+  lockedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([status, lockedAt])
+}
+
+enum PlaybookType {
+  CHAT
+  AD_GEN
+  SHOPIFY
+  RESEARCH
+}
+
+enum OrgRole {
+  ADMIN
+  USER
+  ANALYST
+  CONNECTOR_ADMIN
+  BILLING_ADMIN
+  AUDITOR
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum ConversationState {
+  ACTIVE
+  ARCHIVED
+  CLOSED
+}
+
+enum ConversationPhase {
+  NOT_STARTED
+  CLASSIFYING
+  ANSWERING
+  AGENTS_WORKING
+  ANSWERED
+  CANCELLED
+  ERROR
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  TOOL
+  SYSTEM
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AgentRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum DatasourceStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SupportChannelType {
+  GMAIL
+  WHATSAPP
+  INSTAGRAM_DM
+}
+
+enum SupportConversationStatus {
+  OPEN
+  AWAITING_APPROVAL
+  READY_TO_SEND
+  ANSWERED
+  NEEDS_HUMAN
+  CLOSED
+}
+
+enum SupportMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SupportMessageStatus {
+  RECEIVED
+  DRAFT
+  APPROVED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Vertical intents — extend by appending (e.g. RETURNS, SHIPPING_POLICY) without
+/// touching core flow: each value maps to a tool set in src/support/intent-tools.ts.
+enum SupportIntent {
+  ORDER_DETAILS
+  PRODUCT_INFO
+  OTHER
+}
+
+enum InsightType {
+  PRODUCT_QUALITY
+  WRONG_OR_DAMAGED_ITEM
+  FAQ_GAP
+  FEATURE_REQUEST
+  STOCK_REQUEST
+  SHIPPING_PAIN
+  PRAISE
+  OTHER
+}
+
+enum InsightSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum CustomerInsightStatus {
+  NEW
+  REVIEWED
+  ACTIONED
+  DISMISSED
+}
+
+enum SupportAgentMode {
+  OFF
+  DRAFT
+  AUTO_SEND
+}
+
+enum SupportRuleMatch {
+  KEYWORD
+  INTENT
+  SENDER_DOMAIN
+  ALWAYS
+}
+
+enum SupportRuleAction {
+  TEMPLATE
+  DIRECTIVE
+  ESCALATE
+}
+
+enum SupportAgentJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum DatasourceProvider {
+  POSTGRES
+  MYSQL
+  BIGQUERY
+  SNOWFLAKE
+  REDSHIFT
+  GOOGLE_SHEETS
+  EXCEL
+  POWER_BI
+  SALESFORCE
+  ZOHO_CRM
+  HUBSPOT
+  GOOGLE_ADS
+  FACEBOOK_ADS
+  GOOGLE_DRIVE
+}
+
+enum SchemaSnapshotStatus {
+  RUNNING
+  NOT_STARTED
+  ERROR
+  COMPLETED
+}
+
+enum FeedbackType {
+  TEXT
+  THUMBS_UP
+  THUMBS_DOWN
+}
+
+
+
+enum AnalystJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum OpportunityStatus {
+  OPEN
+  VIEWED
+  EXPLORING
+  DISMISSED
+  DONE
+}
+
+enum OpportunitySource {
+  ANOMALY_CURATION
+  WEEKLY_DIGEST
+}
+
+enum OpportunityCategory {
+  MARKETING
+  COMMUNICATION
+  PRICING
+  PRODUCT
+  RETENTION
+  OPERATIONS
+  CUSTOMER_EXPERIENCE
+  INVENTORY
+  ACQUISITION
+  OTHER
+}
+
+enum MarketAnalysisStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum WeeklyDigestStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AiServiceProvider {
+  ANTHROPIC
+  OPENAI
+  GOOGLE
+  AZURE_OPENAI
+  AWS_BEDROCK
+  COHERE
+  MISTRAL
+  GROQ
+  XAI
+  DEEPSEEK
+  PERPLEXITY
+  OPENROUTER
+  OTHER
+}
+
+enum AiCallKind {
+  CHAT_COMPLETION
+  EMBEDDING
+  IMAGE
+  AUDIO_TRANSCRIPTION
+  AUDIO_SYNTHESIS
+  RERANK
+  MODERATION
+  OTHER
+}
+
+enum AiCallStatus {
+  SUCCEEDED
+  FAILED
+  TIMEOUT
+  RATE_LIMITED
+  CANCELLED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum ContentNodeStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ContentTreeStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+enum SupportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
